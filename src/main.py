@@ -1,4 +1,5 @@
-import requests
+from spotify import get_spotify_token, fetch_spotify_artists, transform_artists
+from ticketmaster import fetch_ticketmaster_events, transform_events
 
 from dotenv import load_dotenv
 
@@ -6,62 +7,32 @@ import os
 
 load_dotenv()
 
+# Number of top listened artists to retrieve from Spotify and process in the pipeline
+limit= 15
+
 
 def main():
-    api_key = os.environ["TICKETMASTER_KEY"]
-    bands= ['Pantera','Metallica','U2']
+    """Orchestrate the pipeline: fetch top Spotify artists and search their live events on Ticketmaster."""
 
-    for band in bands:
-        events= fetch_ticketmaster_events(api_key,band)
+    spotify_client_id= os.environ["SPOTIFY_CLIENT_ID"]
+    spotify_client_secret= os.environ["SPOTIFY_CLIENT_SECRET"]
+    spotify_refresh_token= os.environ["SPOTIFY_REFRESH_TOKEN"]
+
+    # 1. Authenticate and fetch raw top artist objects from Spotify
+    token= get_spotify_token(spotify_client_id,spotify_client_secret,spotify_refresh_token)
+
+    artists= fetch_spotify_artists(token, limit)
+
+    # 2. Extract only the artist names (strings) from the raw Spotify dictionaries
+    artist_names= transform_artists(artists)
+
+    ticketmaster_api_key = os.environ["TICKETMASTER_KEY"]
+
+    # 3. Search and clean live events on Ticketmaster for each artist name
+    for artist in artist_names:
+        events= fetch_ticketmaster_events(ticketmaster_api_key,artist)
         cleaned=transform_events(events)
-        print(band,cleaned)
-
-
-
-
-def fetch_ticketmaster_events(api_key, keyword):
-
-    payload = {'keyword': keyword,'size': '10', 'apikey': api_key}
-    r = requests.get("https://app.ticketmaster.com/discovery/v2/events.json", params=payload, timeout= 10)
-
-    if (r.status_code == 200):
-        data= r.json()
-
-        if ("_embedded" in data.keys()):
-
-            events=data.get("_embedded").get("events")
-            return events
-        
-        else:
-            print(f"NO EVENTS {keyword}")
-            return []
-
-    else:
-        print(f"CALL ERROR CODE | {r.status_code}")
-        return []
-
-def transform_events(events):
-    cleaned_events= []
-
-    for event in events:
-        event_id= event.get('id')
-        name= event.get('name')
-
-        venues=(event.get('_embedded') or  {}).get('venues') or []
-        if venues != []:
-            city= (venues[0].get('city', {}) or {}).get('name')
-        else:
-            city= None
-
-        sales_start_datetime= ((event.get('sales') or {}).get('public') or {}).get('startDateTime')
-        date= ((event.get('dates') or {}).get('start') or {}).get('localDate')
-        url= event.get('url')
-
-        cleaned_event= {'event_id': event_id, 'name': name, 'city': city, 'sales_start_datetime': sales_start_datetime, 'date':date, 'url':url}
-
-        cleaned_events.append(cleaned_event)
-
-    return cleaned_events
+        print(artist,cleaned)
 
 
 if __name__ == "__main__":
