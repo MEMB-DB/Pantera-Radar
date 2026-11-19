@@ -32,7 +32,13 @@ def main():
     for artist in artist_names:
         events= fetch_ticketmaster_events(ticketmaster_api_key,artist)
         cleaned=transform_events(events)
-        print(artist,cleaned)
+        
+        if not cleaned:
+            continue
+
+        print(artist)
+        for event in cleaned:
+            print(f"  {event['date']} | {event['city']} | {event['url']}")
 
 
 if __name__ == "__main__":
